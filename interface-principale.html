@@ -644,11 +644,13 @@
                 contentDiv.id = `content-${activeTab.id}`;
                 
                 // Déterminer quelle page charger
+                // Utilise le chemin relatif par rapport à l'emplacement actuel
                 let pageUrl = '';
                 if (activeTab.phase === 'alerte') {
-                    pageUrl = 'fiche-alerte.html';
+                    // Chemin relatif : dans le même dossier
+                    pageUrl = './fiche-alerte.html';
                 } else if (activeTab.phase === 'terrain') {
-                    pageUrl = 'formulaire-terrain.html';
+                    pageUrl = './formulaire-terrain.html';
                 }
                 
                 // Créer l'iframe avec communication
