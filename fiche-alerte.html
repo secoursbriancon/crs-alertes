@@ -346,23 +346,32 @@ function restaurerDonnees(donnees) {
 function sauvegarderLocal() {
     if (!currentTabId) return;
     
-    const donnees = {
-        origine_alerte: document.getElementById('origineAlerte')?.value,
-        activite: document.getElementById('activite')?.value,
-        commune: document.getElementById('commune')?.value,
-        // ... autres champs selon besoin
-    };
-    
-    sendToParent('UPDATE_TAB', {
-        tabId: currentTabId,
-        updates: {
-            donneesLocales: donnees
-        }
-    });
+    try {
+        const donnees = {
+            origine_alerte: document.getElementById('origineAlerte')?.value,
+            activite: document.getElementById('activite')?.value,
+            commune: document.getElementById('commune')?.value,
+            // ... autres champs selon besoin
+        };
+        
+        sendToParent('UPDATE_TAB', {
+            tabId: currentTabId,
+            updates: {
+                donneesLocales: donnees
+            }
+        });
+        
+        console.log('✅ Sauvegarde automatique OK');
+    } catch (error) {
+        console.error('❌ Erreur sauvegarde automatique:', error);
+    }
 }
 
-// Sauvegarder automatiquement toutes les 30 secondes
-setInterval(sauvegarderLocal, 30000);
+// DÉSACTIVÉ temporairement - peut causer des problèmes
+// Décommentez si vous voulez la sauvegarde auto toutes les 30 secondes
+// setInterval(sauvegarderLocal, 30000);
+
+console.log('📝 Fiche d\'alerte chargée - Sauvegarde auto DÉSACTIVÉE');
 
     </script>
     <script>
