@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRS Alpes Briançon - Gestion Multi-Alertes</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg: #243244;
+            --panel: #2f4357;
+            --panel-alt: #3a5064;
+            --ink: #eaf0f6;
+            --muted: #a9b7c9;
+            --accent: #e94560;
+            --accent-2: #0f3460;
+            --border: #41576d;
+            --ok: #2ecc71;
+            --warn: #e74c3c;
+            --info: #3499db;
+            --shadow-light: 0 4px 15px rgba(0,0,0,.2);
+            --shadow-bold: 0 10px 30px rgba(0,0,0,.4);
+            --orange: #ff9800;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            background: linear-gradient(180deg, #1f2a38 0%, var(--bg) 100%);
+            color: var(--ink);
+            line-height: 1.4;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* BARRE D'ONGLETS */
+        .tabs-bar {
+            background: var(--panel);
+            border-bottom: 3px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            gap: 8px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            height: 60px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .tabs-bar::-webkit-scrollbar {
+            height: 6px;
+        }
+        
+        .tabs-bar::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+        
+        .tabs-bar::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+        
+        /* BOUTON NOUVELLE ALERTE */
+        .btn-new-tab {
+            background: var(--ok);
+            color: white;
+            border: none;
+            width: 45px;
+            height: 45px;
+            border-radius: 8px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            box-shadow: var(--shadow-light);
+        }
+        
+        .btn-new-tab:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-bold);
+        }
+        
+        /* ONGLET */
+        .tab {
+            background: var(--panel-alt);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            max-width: 250px;
+            min-width: 180px;
+            height: 45px;
+            flex-shrink: 0;
+            position: relative;
+        }
+        
+        .tab:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-light);
+        }
+        
+        .tab.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 15px rgba(233, 69, 96, 0.5);
+        }
+        
+        /* INDICATEUR DE COULEUR */
+        .tab-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        
+        .tab-indicator.orange {
+            background: var(--orange);
+            box-shadow: 0 0 8px var(--orange);
+        }
+        
+        .tab-indicator.green {
+            background: var(--ok);
+            box-shadow: 0 0 8px var(--ok);
+            animation: pulse 2s infinite;
+        }
+        
+        .tab-indicator.red {
+            background: var(--warn);
+            box-shadow: 0 0 8px var(--warn);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* TITRE ONGLET */
+        .tab-title {
+            flex-grow: 1;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--ink);
+        }
+        
+        /* BOUTON FERMER */
+        .tab-close {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--warn);
+            color: white;
+            border: none;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        
+        .tab-close:hover {
+            transform: scale(1.2);
+            background: #c0392b;
+        }
+        
+        /* ZONE DE CONTENU */
+        .content-area {
+            height: calc(100vh - 60px);
+            overflow: auto;
+            padding: 20px;
+        }
+        
+        .content-area::-webkit-scrollbar {
+            width: 10px;
+        }
+        
+        .content-area::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+        
+        .content-area::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 5px;
+        }
+        
+        /* IFRAME POUR LE CONTENU */
+        .tab-content {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .tab-content iframe {
+            width: 100%;
+            height: calc(100vh - 100px);
+            border: none;
+            border-radius: 10px;
+            background: white;
+        }
+        
+        /* ÉCRAN VIDE */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--muted);
+            gap: 20px;
+        }
+        
+        .empty-state-icon {
+            font-size: 80px;
+        }
+        
+        .empty-state-text {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .empty-state-hint {
+            font-size: 14px;
+            color: var(--muted);
+        }
+        
+        /* NOTIFICATIONS */
+        .notification {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: var(--ok);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: var(--shadow-bold);
+            font-weight: 600;
+            z-index: 10000;
+            opacity: 0;
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+        }
+        
+        .notification.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        
+        .notification.error {
+            background: var(--warn);
+        }
+        
+        .notification.info {
+            background: var(--info);
+        }
+        
+        /* MODAL DE CONFIRMATION */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-overlay.show {
+            display: flex;
+        }
+        
+        .modal {
+            background: var(--panel);
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 400px;
+            box-shadow: var(--shadow-bold);
+            border: 1px solid var(--border);
+        }
+        
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: var(--accent);
+        }
+        
+        .modal-text {
+            margin-bottom: 25px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        
+        .btn-modal {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-modal-cancel {
+            background: var(--panel-alt);
+            color: var(--ink);
+        }
+        
+        .btn-modal-confirm {
+            background: var(--warn);
+            color: white;
+        }
+        
+        .btn-modal:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-light);
+        }
+        
+        /* COMPTEUR D'ONGLETS */
+        .tabs-counter {
+            background: var(--panel-alt);
+            color: var(--muted);
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+    </style>
+</head>
+<body>
+    <!-- BARRE D'ONGLETS -->
+    <div class="tabs-bar" id="tabsBar">
+        <button class="btn-new-tab" id="btnNewTab" title="Nouvelle alerte">+</button>
+        <!-- Les onglets seront ajoutés ici dynamiquement -->
+        <div class="tabs-counter" id="tabsCounter">0 / 20</div>
+    </div>
+    
+    <!-- ZONE DE CONTENU -->
+    <div class="content-area" id="contentArea">
+        <!-- État vide initial -->
+        <div class="empty-state" id="emptyState">
+            <div class="empty-state-icon">🚁</div>
+            <div class="empty-state-text">Aucune alerte en cours</div>
+            <div class="empty-state-hint">Cliquez sur le bouton "+" pour créer une nouvelle alerte</div>
+        </div>
+        
+        <!-- Les contenus des onglets seront ajoutés ici -->
+    </div>
+    
+    <!-- MODAL DE CONFIRMATION -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-title" id="modalTitle">Confirmer la fermeture</div>
+            <div class="modal-text" id="modalText">
+                Êtes-vous sûr de vouloir fermer cet onglet ? Les données non sauvegardées seront perdues.
+            </div>
+            <div class="modal-actions">
+                <button class="btn-modal btn-modal-cancel" id="btnModalCancel">Annuler</button>
+                <button class="btn-modal btn-modal-confirm" id="btnModalConfirm">Fermer</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- NOTIFICATION -->
+    <div class="notification" id="notification"></div>
+    
+    <script>
+        // ================================================
+        // CONFIGURATION SUPABASE
+        // ================================================
+        const SUPABASE_URL = 'https://vnasjoncvlupdswupfzk.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZuYXNqb25jdmx1cGRzd3VwZnprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA0NDQ0MDUsImV4cCI6MjA3NjAyMDQwNX0.2j1_qtxv8giF_HfspdY6XxyOLJYoR6xaSnfi_b2BQ3w';
+        
+        let supabase;
+        let utilisateur = '';
+        
+        // ================================================
+        // GESTION DES ONGLETS
+        // ================================================
+        class TabsManager {
+            constructor() {
+                this.tabs = [];
+                this.activeTabId = null;
+                this.maxTabs = 20;
+                this.loadFromStorage();
+                this.initSupabase();
+                this.initEventListeners();
+                this.render();
+            }
+            
+            initSupabase() {
+                try {
+                    const { createClient } = window.supabase;
+                    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+                    console.log('✅ Supabase connecté');
+                    
+                    // Récupération du nom d'utilisateur
+                    utilisateur = localStorage.getItem('nom_utilisateur');
+                    if (!utilisateur) {
+                        utilisateur = prompt('Entrez votre nom:') || 'Utilisateur';
+                        localStorage.setItem('nom_utilisateur', utilisateur);
+                    }
+                    
+                    // Écoute des changements en temps réel
+                    this.setupRealtimeSync();
+                } catch (error) {
+                    console.error('❌ Erreur Supabase:', error);
+                    this.showNotification('Erreur de connexion à la base de données', 'error');
+                }
+            }
+            
+            setupRealtimeSync() {
+                // Synchronisation temps réel avec l'autre utilisateur
+                const channel = supabase
+                    .channel('interventions-channel')
+                    .on('postgres_changes', 
+                        { event: '*', schema: 'public', table: 'interventions' },
+                        (payload) => {
+                            console.log('🔄 Changement détecté:', payload);
+                            if (payload.new && payload.new.utilisateur !== utilisateur) {
+                                this.handleRemoteChange(payload);
+                            }
+                        }
+                    )
+                    .subscribe();
+            }
+            
+            handleRemoteChange(payload) {
+                const { eventType, new: newData } = payload;
+                
+                if (eventType === 'INSERT') {
+                    this.showNotification(`📢 Nouvelle intervention créée par ${newData.utilisateur}`, 'info');
+                } else if (eventType === 'UPDATE') {
+                    // Mettre à jour l'onglet si ouvert
+                    const tab = this.tabs.find(t => t.interventionId === newData.id);
+                    if (tab) {
+                        tab.statut = newData.statut;
+                        tab.couleur = newData.onglet_couleur;
+                        tab.titre = newData.titre_onglet;
+                        this.render();
+                    }
+                }
+            }
+            
+            initEventListeners() {
+                // Bouton nouvelle alerte
+                document.getElementById('btnNewTab').addEventListener('click', () => {
+                    this.createNewTab();
+                });
+                
+                // Modal
+                document.getElementById('btnModalCancel').addEventListener('click', () => {
+                    this.hideModal();
+                });
+                
+                document.getElementById('btnModalConfirm').addEventListener('click', () => {
+                    if (this.tabToClose) {
+                        this.closeTab(this.tabToClose, true);
+                        this.hideModal();
+                    }
+                });
+            }
+            
+            createNewTab() {
+                if (this.tabs.length >= this.maxTabs) {
+                    this.showNotification(`Maximum ${this.maxTabs} onglets atteints`, 'error');
+                    return;
+                }
+                
+                const newTab = {
+                    id: this.generateId(),
+                    interventionId: null,
+                    titre: 'Nouvelle alerte',
+                    statut: 'alerte_en_cours',
+                    couleur: 'orange',
+                    phase: 'alerte',
+                    sousOngletActif: null,
+                    donneesLocales: {},
+                    dateCreation: new Date().toISOString()
+                };
+                
+                this.tabs.push(newTab);
+                this.activeTabId = newTab.id;
+                this.saveToStorage();
+                this.render();
+                
+                this.showNotification('Nouvelle alerte créée', 'info');
+            }
+            
+            switchTab(tabId) {
+                this.activeTabId = tabId;
+                this.saveToStorage();
+                this.render();
+            }
+            
+            requestCloseTab(tabId) {
+                const tab = this.tabs.find(t => t.id === tabId);
+                if (!tab) return;
+                
+                // Si l'intervention est terminée, fermer directement
+                if (tab.statut === 'terminee') {
+                    this.closeTab(tabId, true);
+                    return;
+                }
+                
+                // Sinon, demander confirmation
+                this.tabToClose = tabId;
+                this.showModal(
+                    'Confirmer la fermeture',
+                    `Êtes-vous sûr de vouloir fermer l'onglet "${tab.titre}" ? Les données non sauvegardées seront perdues.`
+                );
+            }
+            
+            closeTab(tabId, confirmed = false) {
+                if (!confirmed) {
+                    this.requestCloseTab(tabId);
+                    return;
+                }
+                
+                const index = this.tabs.findIndex(t => t.id === tabId);
+                if (index === -1) return;
+                
+                this.tabs.splice(index, 1);
+                
+                // Si c'était l'onglet actif, activer le précédent ou suivant
+                if (this.activeTabId === tabId) {
+                    if (this.tabs.length > 0) {
+                        const newIndex = Math.max(0, index - 1);
+                        this.activeTabId = this.tabs[newIndex].id;
+                    } else {
+                        this.activeTabId = null;
+                    }
+                }
+                
+                this.saveToStorage();
+                this.render();
+            }
+            
+            updateTab(tabId, updates) {
+                const tab = this.tabs.find(t => t.id === tabId);
+                if (!tab) return;
+                
+                Object.assign(tab, updates);
+                this.saveToStorage();
+                this.render();
+            }
+            
+            render() {
+                const tabsBar = document.getElementById('tabsBar');
+                const contentArea = document.getElementById('contentArea');
+                const emptyState = document.getElementById('emptyState');
+                const counter = document.getElementById('tabsCounter');
+                
+                // Mise à jour du compteur
+                counter.textContent = `${this.tabs.length} / ${this.maxTabs}`;
+                
+                // Supprimer les anciens onglets (sauf le bouton + et le compteur)
+                const existingTabs = tabsBar.querySelectorAll('.tab');
+                existingTabs.forEach(tab => tab.remove());
+                
+                // Afficher état vide ou masquer
+                if (this.tabs.length === 0) {
+                    emptyState.style.display = 'flex';
+                    return;
+                } else {
+                    emptyState.style.display = 'none';
+                }
+                
+                // Créer les onglets
+                this.tabs.forEach(tab => {
+                    const tabElement = this.createTabElement(tab);
+                    tabsBar.insertBefore(tabElement, counter);
+                });
+                
+                // Afficher le contenu de l'onglet actif
+                this.renderContent();
+            }
+            
+            createTabElement(tab) {
+                const div = document.createElement('div');
+                div.className = 'tab' + (tab.id === this.activeTabId ? ' active' : '');
+                div.onclick = () => this.switchTab(tab.id);
+                
+                const indicator = document.createElement('div');
+                indicator.className = `tab-indicator ${tab.couleur}`;
+                
+                const title = document.createElement('div');
+                title.className = 'tab-title';
+                title.textContent = tab.titre;
+                title.title = tab.titre;
+                
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'tab-close';
+                closeBtn.textContent = '×';
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    this.requestCloseTab(tab.id);
+                };
+                
+                div.appendChild(indicator);
+                div.appendChild(title);
+                div.appendChild(closeBtn);
+                
+                return div;
+            }
+            
+            renderContent() {
+                const contentArea = document.getElementById('contentArea');
+                
+                // Effacer le contenu précédent (sauf empty state)
+                const oldContent = contentArea.querySelector('.tab-content');
+                if (oldContent) oldContent.remove();
+                
+                const activeTab = this.tabs.find(t => t.id === this.activeTabId);
+                if (!activeTab) return;
+                
+                // Créer le conteneur de contenu
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'tab-content active';
+                contentDiv.id = `content-${activeTab.id}`;
+                
+                // Déterminer quelle page charger
+                // Utilise le chemin relatif par rapport à l'emplacement actuel
+                let pageUrl = '';
+                if (activeTab.phase === 'alerte') {
+                    // Chemin relatif : dans le même dossier
+                    pageUrl = './fiche-alerte-v2_7_.html';
+                } else if (activeTab.phase === 'terrain') {
+                    pageUrl = './formulaire-terrain.html';
+                }
+                
+                // Créer l'iframe avec communication
+                const iframe = document.createElement('iframe');
+                iframe.src = pageUrl + '?tabId=' + activeTab.id;
+                iframe.onload = () => {
+                    // Envoyer les données de l'onglet à l'iframe
+                    iframe.contentWindow.postMessage({
+                        type: 'INIT_TAB',
+                        tabData: activeTab
+                    }, '*');
+                };
+                
+                contentDiv.appendChild(iframe);
+                contentArea.appendChild(contentDiv);
+            }
+            
+            // Communication avec les iframes
+            handleMessage(event) {
+                const { type, data } = event.data;
+                
+                switch (type) {
+                    case 'UPDATE_TAB':
+                        this.updateTab(data.tabId, data.updates);
+                        break;
+                        
+                    case 'CLOSE_TAB':
+                        this.closeTab(data.tabId, true);
+                        break;
+                        
+                    case 'SHOW_NOTIFICATION':
+                        this.showNotification(data.message, data.level);
+                        break;
+                        
+                    case 'SWITCH_PHASE':
+                        const tab = this.tabs.find(t => t.id === data.tabId);
+                        if (tab) {
+                            tab.phase = data.phase;
+                            this.saveToStorage();
+                            this.render();
+                        }
+                        break;
+                }
+            }
+            
+            // Stockage local
+            saveToStorage() {
+                const data = {
+                    tabs: this.tabs,
+                    activeTabId: this.activeTabId
+                };
+                localStorage.setItem('crs_tabs', JSON.stringify(data));
+            }
+            
+            loadFromStorage() {
+                const stored = localStorage.getItem('crs_tabs');
+                if (stored) {
+                    try {
+                        const data = JSON.parse(stored);
+                        this.tabs = data.tabs || [];
+                        this.activeTabId = data.activeTabId;
+                    } catch (error) {
+                        console.error('Erreur chargement:', error);
+                        this.tabs = [];
+                        this.activeTabId = null;
+                    }
+                }
+            }
+            
+            // Utilitaires
+            generateId() {
+                return 'tab_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }
+            
+            showNotification(message, type = 'info') {
+                const notification = document.getElementById('notification');
+                notification.textContent = message;
+                notification.className = 'notification ' + type;
+                
+                // Afficher
+                setTimeout(() => notification.classList.add('show'), 100);
+                
+                // Masquer après 3 secondes
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 3000);
+            }
+            
+            showModal(title, text) {
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalText').textContent = text;
+                document.getElementById('modalOverlay').classList.add('show');
+            }
+            
+            hideModal() {
+                document.getElementById('modalOverlay').classList.remove('show');
+                this.tabToClose = null;
+            }
+        }
+        
+        // ================================================
+        // INITIALISATION
+        // ================================================
+        const tabsManager = new TabsManager();
+        
+        // Écoute des messages des iframes
+        window.addEventListener('message', (event) => {
+            tabsManager.handleMessage(event);
+        });
+        
+        // Prévenir la fermeture accidentelle
+        window.addEventListener('beforeunload', (e) => {
+            if (tabsManager.tabs.length > 0) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+        
+        console.log('✅ Système multi-onglets initialisé');
+    </script>
+</body>
+</html>
